@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 
 # Import your model (assuming it's in dna_transformer.py)
-from dna_transformer import DNATransformer, DNATokenizer, DNADataset
+from transformer_v2 import DNATransformer, DNATokenizer, DNADataset
 
 
 class PerformanceProfiler:
@@ -66,7 +66,7 @@ class PerformanceProfiler:
 
 def profile_training(model, dataloader, optimizer, criterion, device, num_batches=50):
 	"""Profile training performance"""
-	print("\n🔥 Profiling Training...")
+	print("\nProfiling Training...")
 	
 	profiler = PerformanceProfiler()
 	model.train()
@@ -111,7 +111,7 @@ def profile_training(model, dataloader, optimizer, criterion, device, num_batche
 
 def profile_inference(model, dataloader, device, num_batches=50):
 	"""Profile inference performance"""
-	print("\n🔍 Profiling Inference...")
+	print("\nProfiling Inference...")
 	
 	profiler = PerformanceProfiler()
 	model.eval()
@@ -139,7 +139,7 @@ def profile_inference(model, dataloader, device, num_batches=50):
 
 def profile_with_pytorch_profiler(model, dataloader, device, num_batches=20):
 	"""Profile using PyTorch's built-in profiler (generates Chrome trace)"""
-	print("\n📊 Running PyTorch Profiler (Chrome trace)...")
+	print("\nRunning PyTorch Profiler (Chrome trace)...")
 	
 	from torch.profiler import profile, record_function, ProfilerActivity
 	
@@ -181,7 +181,7 @@ def profile_with_pytorch_profiler(model, dataloader, device, num_batches=20):
 	# Save trace
 	trace_path = "profiler_trace.json"
 	prof.export_chrome_trace(trace_path)
-	print(f"✅ Saved Chrome trace to: {trace_path}")
+	print(f"Saved Chrome trace to: {trace_path}")
 	print(f"   Open in Chrome at: chrome://tracing")
 	
 	# Print summary
@@ -200,7 +200,7 @@ def profile_with_pytorch_profiler(model, dataloader, device, num_batches=20):
 
 def memory_profiling(model, dataloader, device, batch_size=32):
 	"""Profile GPU memory usage"""
-	print("\n💾 Profiling GPU Memory...")
+	print("\nProfiling GPU Memory...")
 	
 	if not torch.cuda.is_available():
 		print("  Skipping: CUDA not available")
@@ -251,7 +251,7 @@ def memory_profiling(model, dataloader, device, batch_size=32):
 
 def throughput_benchmark(model, dataloader, device, num_batches=100):
 	"""Measure throughput (samples/sec)"""
-	print("\n⚡ Measuring Throughput...")
+	print("\nMeasuring Throughput...")
 	
 	model.eval()
 	
@@ -305,14 +305,14 @@ def main():
 	
 	# Device
 	device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-	print(f"🚀 Profiling on: {device}")
+	print(f"Profiling on: {device}")
 	if torch.cuda.is_available():
 		print(f"   GPU: {torch.cuda.get_device_name(0)}")
 		print(f"   CUDA Version: {torch.version.cuda}")
 		print(f"   Available memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
 	
 	# Load dataset
-	print("\n📦 Loading dataset...")
+	print("\nLoading dataset...")
 	train_data = HumanEnhancersCohn(split='train', version=0)
 	tokenizer = DNATokenizer()
 	
@@ -321,7 +321,7 @@ def main():
 	train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
 	
 	# Initialize model
-	print("\n🏗️  Initializing model...")
+	print("\nInitializing model...")
 	model = DNATransformer(
 		vocab_size=tokenizer.vocab_size,
 		d_model=D_MODEL,
@@ -347,17 +347,17 @@ def main():
 	# 1. Memory profiling
 	memory_profiling(model, train_loader, device, BATCH_SIZE)
 	
-	# 2. Throughput benchmark
-	throughput = throughput_benchmark(model, train_loader, device, num_batches=100)
+	# # 2. Throughput benchmark
+	# throughput = throughput_benchmark(model, train_loader, device, num_batches=100)
 	
-	# 3. Training profiling
-	train_timings = profile_training(model, train_loader, optimizer, criterion, device, num_batches=50)
+	# # 3. Training profiling
+	# train_timings = profile_training(model, train_loader, optimizer, criterion, device, num_batches=50)
 	
-	# 4. Inference profiling
-	inference_timings = profile_inference(model, train_loader, device, num_batches=50)
+	# # 4. Inference profiling
+	# inference_timings = profile_inference(model, train_loader, device, num_batches=50)
 	
-	# 5. PyTorch profiler (Chrome trace)
-	pytorch_prof = profile_with_pytorch_profiler(model, train_loader, device, num_batches=20)
+	# # 5. PyTorch profiler (Chrome trace)
+	# pytorch_prof = profile_with_pytorch_profiler(model, train_loader, device, num_batches=20)
 	
 	# Save results
 	results = {
@@ -376,7 +376,7 @@ def main():
 	with open('profiling_results.json', 'w') as f:
 		json.dump(results, f, indent=2)
 	
-	print("\n✅ Profiling complete! Results saved to profiling_results.json")
+	print("\nProfiling complete! Results saved to profiling_results.json")
 	print("   Chrome trace saved to profiler_trace.json")
 
 
