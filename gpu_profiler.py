@@ -10,6 +10,7 @@ from datasets import load_dataset
 import time
 import json
 from pathlib import Path
+from genomic_benchmarks.dataset_getters.pytorch_datasets import HumanEnhancersCohn
 
 # Import your model (assuming it's in dna_transformer.py)
 from transformer_v2 import DNATransformer, DNATokenizer, DNADataset
@@ -317,7 +318,7 @@ def main():
 	tokenizer = DNATokenizer()
 	
 	# Create smaller dataset for profiling
-	train_dataset = DNADataset(train_data.select(range(1000)), tokenizer, max_length=MAX_LENGTH)
+	train_dataset = DNADataset(train_data, tokenizer, max_length=MAX_LENGTH)
 	train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
 	
 	# Initialize model
@@ -332,6 +333,8 @@ def main():
 		num_classes=2,
 		dropout=DROPOUT
 	).to(device)
+
+	model = torch.compile(model)
 	
 	print(f"   Parameters: {sum(p.numel() for p in model.parameters()):,}")
 	
@@ -347,17 +350,17 @@ def main():
 	# 1. Memory profiling
 	memory_profiling(model, train_loader, device, BATCH_SIZE)
 	
-	# # 2. Throughput benchmark
-	# throughput = throughput_benchmark(model, train_loader, device, num_batches=100)
+	# 2. Throughput benchmark
+	throughput = throughput_benchmark(model, train_loader, device, num_batches=100)
 	
-	# # 3. Training profiling
-	# train_timings = profile_training(model, train_loader, optimizer, criterion, device, num_batches=50)
+	# 3. Training profiling
+	train_timings = profile_training(model, train_loader, optimizer, criterion, device, num_batches=50)
 	
-	# # 4. Inference profiling
-	# inference_timings = profile_inference(model, train_loader, device, num_batches=50)
+	# 4. Inference profiling
+	inference_timings = profile_inference(model, train_loader, device, num_batches=50)
 	
-	# # 5. PyTorch profiler (Chrome trace)
-	# pytorch_prof = profile_with_pytorch_profiler(model, train_loader, device, num_batches=20)
+	# 5. PyTorch profiler (Chrome trace)
+	pytorch_prof = profile_with_pytorch_profiler(model, train_loader, device, num_batches=20)
 	
 	# Save results
 	results = {
