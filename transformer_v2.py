@@ -166,7 +166,7 @@ class DNATransformer(nn.Module):
 		# cls_repr = x[:, 0, :]  # [B, D]
 		
 		# Classification
-		logits = self.classifier(cls_repr)
+		logits = self.classifier(x)
 		
 		return logits
 
