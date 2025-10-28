@@ -262,12 +262,12 @@ def main():
 	train_dataset = DNADataset(train_data, tokenizer, max_length=MAX_LENGTH)
 	test_dataset = DNADataset(test_data, tokenizer, max_length=MAX_LENGTH)
 
-	train_dataset_onebatch = [train_dataset[i] for i in range(BATCH_SIZE)]
+	train_dataset_onebatch = [train_dataset[i] for i in range(BATCH_SIZE*4)]
 	test_dataset_onebatch = [test_dataset[i] for i in range(BATCH_SIZE)]
 
 	# Create dataloaders
 	train_loader = DataLoader(train_dataset_onebatch, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
-	test_loader = DataLoader(test_dataset_onebatch, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
+	test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
 	
 	print(f"Train size: {len(train_dataset)}, Test size: {len(test_dataset)}")
 	
