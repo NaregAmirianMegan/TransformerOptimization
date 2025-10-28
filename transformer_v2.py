@@ -21,22 +21,6 @@ class DNATokenizer:
 	def encode(self, sequence):
 		"""Convert DNA string to list of token IDs"""
 		return [self.vocab.get(char, self.vocab['<UNK>']) for char in sequence.upper()]
-	
-	# def batch_encode(self, sequences, max_length=None):
-	# 	"""Encode and pad a batch of sequences"""
-	# 	encoded = [self.encode(seq) for seq in sequences]
-		
-	# 	if max_length is None:
-	# 		max_length = max(len(seq) for seq in encoded)
-		
-	# 	# Pad sequences
-	# 	padded = []
-	# 	for seq in encoded:
-	# 		if len(seq) < max_length:
-	# 			seq = seq + [self.vocab['<PAD>']] * (max_length - len(seq))
-	# 		padded.append(seq)
-		
-	# 	return torch.tensor(padded, dtype=torch.long)
 
 
 class DNADataset(Dataset):
@@ -105,7 +89,7 @@ class DNATransformer(nn.Module):
 		dim_feedforward=512,
 		max_seq_length=512,
 		num_classes=2,
-		dropout=0.1
+		dropout=0.1,
 	):
 		super().__init__()
 		
@@ -116,6 +100,10 @@ class DNATransformer(nn.Module):
 		
 		# Positional encoding
 		self.pos_encoder = PositionalEncoding(d_model, max_seq_length, dropout)
+
+		# # Learned CLS token
+		# cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
+		# self.register_buffer('cls_token', cls_token)
 		
 		# Transformer encoder
 		encoder_layer = nn.TransformerEncoderLayer(
@@ -123,6 +111,7 @@ class DNATransformer(nn.Module):
 			nhead=nhead,
 			dim_feedforward=dim_feedforward,
 			dropout=dropout,
+			norm_first=True,
 			batch_first=True
 		)
 		self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
@@ -148,22 +137,36 @@ class DNATransformer(nn.Module):
 		
 		# Create padding mask
 		padding_mask = (input_ids == 0)  # True for padding tokens
+
+		# cls_pad = torch.zeros((input_ids.size(0), 1), dtype=torch.bool)
+		# self.register_buffer('cls_pad', cls_pad)
+		# padding_mask = torch.cat([cls_pad, padding_mask], dim=1)
 		
 		# Embed tokens
 		x = self.embedding(input_ids) * math.sqrt(self.d_model)
 		
 		# Add positional encoding
 		x = self.pos_encoder(x)
+
+		# # Add CLS token at start of sequence
+		# cls_tokens = self.cls_token.expand(input_ids.size(0), -1, -1)  # [B, 1, D]
+		# x = torch.cat((cls_tokens, x), dim=1)  # [B, L+1, D]
 		
-		# Pass through transformer
+		# Pass through transformer 
 		x = self.transformer_encoder(x, src_key_padding_mask=padding_mask)
 		
 		# Global average pooling (excluding padding)
 		mask = (~padding_mask).unsqueeze(-1).float()
 		x = (x * mask).sum(dim=1) / mask.sum(dim=1)
+
+		# x = x.masked_fill(padding_mask.unsqueeze(-1), float('-inf'))
+		# x = x.max(dim=1).values
+
+		# # CLS representation
+		# cls_repr = x[:, 0, :]  # [B, D]
 		
 		# Classification
-		logits = self.classifier(x)
+		logits = self.classifier(cls_repr)
 		
 		return logits
 
@@ -237,7 +240,7 @@ def main():
 	NUM_LAYERS = 4
 	DIM_FEEDFORWARD = 512
 	DROPOUT = 0.1
-	LEARNING_RATE = 1e-4
+	LEARNING_RATE = 1e-3
 	NUM_EPOCHS = 10
 	
 	# Device
@@ -258,10 +261,13 @@ def main():
 	# Create PyTorch datasets
 	train_dataset = DNADataset(train_data, tokenizer, max_length=MAX_LENGTH)
 	test_dataset = DNADataset(test_data, tokenizer, max_length=MAX_LENGTH)
-	
+
+	train_dataset_onebatch = [train_dataset[i] for i in range(BATCH_SIZE)]
+	test_dataset_onebatch = [test_dataset[i] for i in range(BATCH_SIZE)]
+
 	# Create dataloaders
-	train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
-	test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
+	train_loader = DataLoader(train_dataset_onebatch, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
+	test_loader = DataLoader(test_dataset_onebatch, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
 	
 	print(f"Train size: {len(train_dataset)}, Test size: {len(test_dataset)}")
 	
@@ -276,6 +282,8 @@ def main():
 		num_classes=2,
 		dropout=DROPOUT
 	).to(device)
+
+	# model = torch.compile(model)
 	
 	print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
 	

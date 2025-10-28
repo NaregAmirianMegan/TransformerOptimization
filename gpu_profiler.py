@@ -3,12 +3,9 @@ GPU Profiling Script for DNA Transformer
 Profiles training and inference performance with CUDA events and PyTorch profiler
 """
 
-import torch
+import torch, time, json, argparse
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from datasets import load_dataset
-import time
-import json
 from pathlib import Path
 from genomic_benchmarks.dataset_getters.pytorch_datasets import HumanEnhancersCohn
 
@@ -294,9 +291,9 @@ def throughput_benchmark(model, dataloader, device, num_batches=100):
 	return throughput
 
 
-def main():
+def main(compile_model, batch_size):
 	# Configuration
-	BATCH_SIZE = 32
+	BATCH_SIZE = batch_size
 	MAX_LENGTH = 512
 	D_MODEL = 128
 	NHEAD = 8
@@ -334,7 +331,8 @@ def main():
 		dropout=DROPOUT
 	).to(device)
 
-	model = torch.compile(model)
+	if compile_model:
+		model = torch.compile(model)
 	
 	print(f"   Parameters: {sum(p.numel() for p in model.parameters()):,}")
 	
@@ -348,7 +346,7 @@ def main():
 	print("="*80)
 	
 	# 1. Memory profiling
-	memory_profiling(model, train_loader, device, BATCH_SIZE)
+	# memory_profiling(model, train_loader, device, BATCH_SIZE)
 	
 	# 2. Throughput benchmark
 	throughput = throughput_benchmark(model, train_loader, device, num_batches=100)
@@ -360,7 +358,7 @@ def main():
 	inference_timings = profile_inference(model, train_loader, device, num_batches=50)
 	
 	# 5. PyTorch profiler (Chrome trace)
-	pytorch_prof = profile_with_pytorch_profiler(model, train_loader, device, num_batches=20)
+	# pytorch_prof = profile_with_pytorch_profiler(model, train_loader, device, num_batches=20)
 	
 	# Save results
 	results = {
@@ -384,4 +382,17 @@ def main():
 
 
 if __name__ == "__main__":
-	main()
+	parser = argparse.ArgumentParser(description="Profile Model Implementations")
+	parser.add_argument("compile_model", type=bool, default=False, help="Compile Model")
+	parser.add_argument("batch_size", type=int, default=32, help="Batch size")
+
+	args = parser.parse_args()
+
+	print(f"Compile Model: {args.compile_model}")
+	print(f"Batch Size: {args.batch_size}")
+	
+	main(args.compile_model, args.batch_size)
+
+
+
+

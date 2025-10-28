@@ -1,0 +1,28 @@
+	The goal of this optimization process is to only use a lower-level tool when absolutely necessary. 
+The more abstraction a tool provides the more robust and maintainable it is. However, more abstraction
+also means coarser-grained control, meaning certain optimizations may be either sub-optimally implemented
+or impossible. There are many libraries, domain specific languages (DSLs) and compilers that try to compile 
+a model from a high level library (PyTorch, TensorFlow, ...) which defines a computation graph and tracks 
+gradients down to machine code for specific hardware so as to maximize model speed and efficiency (e.g. 
+sample throughput during training, speed of inference, memory usage, etc...). Each tool gives you a certain
+level of control in exchange for a certain amount of abstraction.
+	Starting at the very top of the stack we can write models in pure PyTorch or TensorFlow and use tools
+provided within those frameworks to do optimization for us. This includes tools like torch.compile, torch.utils.data,
+and torch_xla.
+	We can take one step lower on the stack while remaining in these languages by using tools like PyTorch Helion,
+which allows for more control on how operations are defined and optimized without really leaving the PyTorch world.
+Helion offers an easier interface to write optimized operations that interfaces easily with PyTorch. 
+	One step further and we reach DSLs like Triton, TileLang, Mojo, and CuTe DSL. Some DSLs are hardware specific (e.g.
+just for GPUs like triton, or even just for NVIDIA GPUs like CuTe DSL) while others are more general (e.g. Mojo that is
+meant to be portable to many different types of hardware accelerators). Additionally there is a spectrum of abstraction
+and granularity offered by different DSLs. 
+	Another step down with arguably the largest leap we arrive at the software that direclty interfaces with the hardware.
+This includes tools like CUDA (NVIDIA) and ROCm (AMD) as well as popular libraries associated with those tools (e.g.
+CuBLAS, CUTLASS, CuDNN for CUDA). This level offers us extremely fine-grained control over the tools and methods used during
+optimization; however, as discussed development and maintenance become more extensive. 
+	Techinically the last level of the stack, as is the case in any software stack, is the assembly/machine code. In the case
+of NVIDIA GPUs this would be PTX/SASS. Although directly writing assembly for hardware accelerators is rare, it's still helpful
+in some cases to be able to read and understand how assembly will be executed by hardware. For example, you could help diagnose
+why a kernel is taking so long by looking at the accesses performed by threads inside the inner loop (are they in the same bank
+causing serialization?), or you could examine the register usage by each thread which could be impacting SM occupancy or latency
+via register spilling.
