@@ -62,12 +62,37 @@ class PerformanceProfiler:
 		return self.timings
 
 
-def profile_training(model, dataloader, optimizer, criterion, device, async_dma, num_batches=50):
+def profile_training(model, dataloader, optimizer, criterion, device, async_dma, num_batches=50, warmup_batches=20):
 	"""Profile training performance"""
 	print("\nProfiling Training...")
-	
+
 	profiler = PerformanceProfiler()
 	model.train()
+
+	for batch_idx, batch in enumerate(dataloader):
+		if batch_idx >= warmup_batches:
+			break
+		
+		# Data transfer
+		input_ids = batch['input_ids'].to(device, non_blocking=async_dma)
+		labels = batch['label'].to(device, non_blocking=async_dma)
+		
+		optimizer.zero_grad()
+		
+		# Forward pass
+		logits = model(input_ids)
+		
+		# Loss computation
+		loss = criterion(logits, labels)
+		
+		# Backward pass
+		loss.backward()
+		
+		# Optimizer step
+		optimizer.step()
+		
+		if batch_idx % 10 == 0:
+			print(f"  Warmup Batch {batch_idx}/{warmup_batches}")
 	
 	for batch_idx, batch in enumerate(dataloader):
 		if batch_idx >= num_batches:
