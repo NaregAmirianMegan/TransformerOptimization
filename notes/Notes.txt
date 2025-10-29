@@ -5,7 +5,7 @@ or impossible. There are many libraries, domain specific languages (DSLs) and co
 a model from a high level library (PyTorch, TensorFlow, ...) which defines a computation graph and tracks 
 gradients down to machine code for specific hardware so as to maximize model speed and efficiency (e.g. 
 sample throughput during training, speed of inference, memory usage, etc...). Each tool gives you a certain
-level of control in exchange for a certain amount of abstraction.
+level of abstraction in exchange for a certain amount of control.
 	Starting at the very top of the stack we can write models in pure PyTorch or TensorFlow and use tools
 provided within those frameworks to do optimization for us. This includes tools like torch.compile, torch.utils.data,
 and torch_xla.
@@ -26,3 +26,107 @@ in some cases to be able to read and understand how assembly will be executed by
 why a kernel is taking so long by looking at the accesses performed by threads inside the inner loop (are they in the same bank
 causing serialization?), or you could examine the register usage by each thread which could be impacting SM occupancy or latency
 via register spilling.
+
+
+The model we are using is a transformer encoder fed into a linear feed forward classifier network. This is quite a difficult 
+problem to solve, and I've only been able to get the model to achieve 67% train and test accuracy (likely due to the model predicting
+some overly simplistic and innaccurate view of the data, hence the suspicious 2/3 accuracy). The primary focus of this project is to 
+improve the training and inference performance of the model. Thoeretically by scaling up the model parameters, improving the embedding 
+method, and providing it with more data it could achieve accuracy similar to that of SOTA models like DNABERT-2 (https://arxiv.org/pdf/2306.15006). 
+
+
+In order to go from raw data to a trained model we follow these broad steps:
+1) raw data -> PyTorch Dataset (which provides interface for functionality and tokenization)
+2) create and intialize model weights and gradients
+3) train model (forward pass, loss computation, backward pass (gradient computations), weight updates)
+
+
+In order to optimize this process we need to first understand what's going on under the PyTorch hood relative to the hardware we have available.
+For this project I've chosen a 
+
+(1) Load the data into the filesystem of the local machine via the dataset constructor:
+```
+HumanEnhancersCohn(...)
+```
+
+(2) Create DataLoader object and tokenizer (this just creates the objects on the CPU, no data is processed or moved yet)
+```
+# Initialize tokenizer
+tokenizer = DNATokenizer()
+
+# Create PyTorch datasets
+train_dataset = DNADataset(train_data, tokenizer, max_length=MAX_LENGTH)
+test_dataset = DNADataset(test_data, tokenizer, max_length=MAX_LENGTH)
+
+train_dataset_onebatch = [train_dataset[i] for i in range(BATCH_SIZE*8)]
+test_dataset_onebatch = [test_dataset[i] for i in range(BATCH_SIZE)]
+
+# Create dataloaders
+train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
+test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
+
+print(f"Train size: {len(train_dataset)}, Test size: {len(test_dataset)}")
+
+# Initialize model
+model = DNATransformer(
+	vocab_size=tokenizer.vocab_size,
+	d_model=D_MODEL,
+	nhead=NHEAD,
+	num_layers=NUM_LAYERS,
+	dim_feedforward=DIM_FEEDFORWARD,
+	max_seq_length=MAX_LENGTH,
+	num_classes=2,
+	dropout=DROPOUT
+).to(device)
+```
+
+(4) Inside the train loop for each batch the following happens
+
+(4.1) DataLoader spawns num_worker processes to fetch num_worker batches (each batch is fetched, tokenized, and collated on the CPU into a pageable buffer)
+      when the main process receives a ready batch from a worker process it allocates a page-locked buffer (if pin_memory=True) and copies the data into that 
+      buffer. Then, if we set non_blocking=True the main process kicks off an async (non-blocking) DMA transfer from that buffer to GPU global memory.
+```
+	pbar = tqdm(dataloader, desc='Training')
+	for batch in pbar:
+		input_ids = batch['input_ids'].to(device)
+		labels = batch['label'].to(device)
+```
+Optimizations: 
+- Implement a more efficient and pipelined CPU->GPU data pipeline (minimize allocations and copies, hide as much latency as possible)
+
+(4.2) Zero out the gradients
+```
+optimizer.zero_grad()
+```
+Optimizations:
+- 
+
+(4.3) Forward pass
+```
+logits = model(input_ids)
+```
+Optimizations:
+- Flash attention, op fusing, custom kernels, use tensor cores
+
+(4.4) Loss computation
+```
+loss = criterion(logits, labels)
+```
+
+(4.5) Backward pass
+```
+loss.backward()
+```
+
+(4.6) Parameter updates
+```
+optimizer.step()
+```
+
+
+
+
+
+
+
+

@@ -62,7 +62,7 @@ class PerformanceProfiler:
 		return self.timings
 
 
-def profile_training(model, dataloader, optimizer, criterion, device, num_batches=50):
+def profile_training(model, dataloader, optimizer, criterion, device, async_dma, num_batches=50):
 	"""Profile training performance"""
 	print("\nProfiling Training...")
 	
@@ -75,8 +75,8 @@ def profile_training(model, dataloader, optimizer, criterion, device, num_batche
 		
 		# Data transfer
 		ctx = profiler.start("data_transfer")
-		input_ids = batch['input_ids'].to(device)
-		labels = batch['label'].to(device)
+		input_ids = batch['input_ids'].to(device, non_blocking=async_dma)
+		labels = batch['label'].to(device, non_blocking=async_dma)
 		profiler.end(ctx)
 		
 		optimizer.zero_grad()
@@ -247,7 +247,7 @@ def memory_profiling(model, dataloader, device, batch_size=32):
 	print(f"    Gradients (backward):     ~{mem_after_backward-mem_after_forward:.2f} MB")
 
 
-def throughput_benchmark(model, dataloader, device, num_batches=100):
+def throughput_benchmark(model, dataloader, device, async_dma, num_batches=100):
 	"""Measure throughput (samples/sec)"""
 	print("\nMeasuring Throughput...")
 	
@@ -273,7 +273,7 @@ def throughput_benchmark(model, dataloader, device, num_batches=100):
 		for batch_idx, batch in enumerate(dataloader):
 			if batch_idx >= num_batches:
 				break
-			input_ids = batch['input_ids'].to(device)
+			input_ids = batch['input_ids'].to(device, non_blocking=async_dma)
 			_ = model(input_ids)
 			total_samples += input_ids.shape[0]
 	
@@ -291,9 +291,8 @@ def throughput_benchmark(model, dataloader, device, num_batches=100):
 	return throughput
 
 
-def main(compile_model, batch_size):
+def main(compile_model, num_workers, async_dma, batch_size):
 	# Configuration
-	BATCH_SIZE = batch_size
 	MAX_LENGTH = 512
 	D_MODEL = 128
 	NHEAD = 8
@@ -316,7 +315,7 @@ def main(compile_model, batch_size):
 	
 	# Create smaller dataset for profiling
 	train_dataset = DNADataset(train_data, tokenizer, max_length=MAX_LENGTH)
-	train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
+	train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=async_dma)
 	
 	# Initialize model
 	print("\nInitializing model...")
@@ -349,13 +348,13 @@ def main(compile_model, batch_size):
 	# memory_profiling(model, train_loader, device, BATCH_SIZE)
 	
 	# 2. Throughput benchmark
-	throughput = throughput_benchmark(model, train_loader, device, num_batches=100)
+	throughput = throughput_benchmark(model, train_loader, device, async_dma, num_batches=200)
 	
 	# 3. Training profiling
-	train_timings = profile_training(model, train_loader, optimizer, criterion, device, num_batches=50)
+	train_timings = profile_training(model, train_loader, optimizer, criterion, device, async_dma, num_batches=200)
 	
 	# 4. Inference profiling
-	inference_timings = profile_inference(model, train_loader, device, num_batches=50)
+	# inference_timings = profile_inference(model, train_loader, device, num_batches=50)
 	
 	# 5. PyTorch profiler (Chrome trace)
 	# pytorch_prof = profile_with_pytorch_profiler(model, train_loader, device, num_batches=20)
@@ -383,15 +382,21 @@ def main(compile_model, batch_size):
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description="Profile Model Implementations")
-	parser.add_argument("compile_model", type=bool, default=False, help="Compile Model")
+	parser.add_argument("--compile_model", action="store_true", help="Compile Model")
+	parser.add_argument("--no_compile_model", dest="compile_model", action="store_false")
+	parser.add_argument("--async_dma", action="store_true", help="Enable async DMA")
+	parser.add_argument("--no_async_dma", dest="async_dma", action="store_false")
+	parser.add_argument("num_workers", type=int, default=0, help="Set num_workers in PyTorch DataLoader")
 	parser.add_argument("batch_size", type=int, default=32, help="Batch size")
 
 	args = parser.parse_args()
 
 	print(f"Compile Model: {args.compile_model}")
+	print(f"num_workers: {args.num_workers}")
+	print(f"async_dma: {args.async_dma}")
 	print(f"Batch Size: {args.batch_size}")
-	
-	main(args.compile_model, args.batch_size)
+
+	main(args.compile_model, args.num_workers, args.async_dma, args.batch_size)
 
 
 

@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 from genomic_benchmarks.dataset_getters.pytorch_datasets import HumanEnhancersCohn
+import numpy as np
 
 
 # ==================== Data Preparation ====================
@@ -111,7 +112,6 @@ class DNATransformer(nn.Module):
 			nhead=nhead,
 			dim_feedforward=dim_feedforward,
 			dropout=dropout,
-			norm_first=True,
 			batch_first=True
 		)
 		self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
@@ -229,19 +229,39 @@ def evaluate(model, dataloader, criterion, device):
 	return total_loss / len(dataloader), 100 * correct / total
 
 
+def analyze_model_outputs(model, dataloader, device):
+	model.eval()
+	all_predictions = []
+	all_labels = []
+	all_logits = []
+	
+	with torch.no_grad():
+		for batch in dataloader:
+			input_ids = batch['input_ids'].to(device)
+			labels = batch['label'].to(device)
+			
+			logits = model(input_ids)
+			_, predicted = torch.max(logits, 1)
+
+			all_predictions.extend(predicted.cpu().numpy())
+			all_labels.extend(labels.cpu().numpy())
+			all_logits.extend(logits.cpu().numpy())
+	
+	return all_predictions, all_labels, all_logits
+
 # ==================== Main Training Script ====================
 
 def main():
 	# Hyperparameters
 	BATCH_SIZE = 32
 	MAX_LENGTH = 512
-	D_MODEL = 128
-	NHEAD = 8
-	NUM_LAYERS = 4
-	DIM_FEEDFORWARD = 512
+	D_MODEL = 256
+	NHEAD = 16
+	NUM_LAYERS = 8
+	DIM_FEEDFORWARD = 1024
 	DROPOUT = 0.1
-	LEARNING_RATE = 1e-3
-	NUM_EPOCHS = 10
+	LEARNING_RATE = 1e-4
+	NUM_EPOCHS = 2
 	
 	# Device
 	device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -262,12 +282,12 @@ def main():
 	train_dataset = DNADataset(train_data, tokenizer, max_length=MAX_LENGTH)
 	test_dataset = DNADataset(test_data, tokenizer, max_length=MAX_LENGTH)
 
-	train_dataset_onebatch = [train_dataset[i] for i in range(BATCH_SIZE*8)]
-	test_dataset_onebatch = [test_dataset[i] for i in range(BATCH_SIZE)]
+	# train_dataset_onebatch = [train_dataset[i] for i in range(BATCH_SIZE*8)]
+	# test_dataset_onebatch = [test_dataset[i] for i in range(BATCH_SIZE)]
 
 	# Create dataloaders
-	train_loader = DataLoader(train_dataset_onebatch, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
-	test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
+	train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
+	test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0)
 	
 	print(f"Train size: {len(train_dataset)}, Test size: {len(test_dataset)}")
 	
@@ -309,6 +329,21 @@ def main():
 			print(f"Saved best model with test acc: {test_acc:.2f}%")
 	
 	print(f"\nBest test accuracy: {best_test_acc:.2f}%")
+
+	# all_predictions, all_labels, all_logits = analyze_model_outputs(model, test_loader, device)
+	# from collections import Counter
+	# print("PREDICTION DISTRIBUTION:")
+	# print(Counter(all_predictions))
+	# print(f"\nIf model predicts all 0s: accuracy would be {all_labels.count(0)/len(all_labels)*100:.1f}%")
+	# print(f"If model predicts all 1s: accuracy would be {all_labels.count(1)/len(all_labels)*100:.1f}%")
+	# print(f"Actual accuracy: 67%")
+
+	# Check a few logits
+	print("\nSample logits (first 10):")
+	for i in range(min(10, len(all_logits))):
+		logits = all_logits[i]
+		probs = np.exp(logits) / np.sum(np.exp(logits))
+		print(f"  Logits: [{logits[0]:.2f}, {logits[1]:.2f}] -> Probs: [{probs[0]:.3f}, {probs[1]:.3f}] -> Pred: {all_predictions[i]}, True: {all_labels[i]}")
 
 
 if __name__ == "__main__":
