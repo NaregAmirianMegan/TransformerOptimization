@@ -92,6 +92,7 @@ model = DNATransformer(
 		labels = batch['label'].to(device)
 ```
 Optimizations: 
+- 
 - Implement a more efficient and pipelined CPU->GPU data pipeline (minimize allocations and copies, hide as much latency as possible)
 
 (4.2) Zero out the gradients

@@ -354,7 +354,7 @@ def main(compile_model, num_workers, async_dma, batch_size):
 	train_timings = profile_training(model, train_loader, optimizer, criterion, device, async_dma, num_batches=200)
 	
 	# 4. Inference profiling
-	# inference_timings = profile_inference(model, train_loader, device, num_batches=50)
+	# inference_timings = profile_inference(model, train_loader, device, num_batches=200)
 	
 	# 5. PyTorch profiler (Chrome trace)
 	# pytorch_prof = profile_with_pytorch_profiler(model, train_loader, device, num_batches=20)
@@ -363,14 +363,14 @@ def main(compile_model, num_workers, async_dma, batch_size):
 	results = {
 		'device': str(device),
 		'gpu_name': torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
-		'batch_size': BATCH_SIZE,
+		'batch_size': batch_size,
 		'max_length': MAX_LENGTH,
 		'd_model': D_MODEL,
 		'num_layers': NUM_LAYERS,
 		'num_params': sum(p.numel() for p in model.parameters()),
 		'throughput_samples_per_sec': throughput,
 		'training_timings': {k: sum(v)/len(v) for k, v in train_timings.items()},
-		'inference_timings': {k: sum(v)/len(v) for k, v in inference_timings.items()},
+		# 'inference_timings': {k: sum(v)/len(v) for k, v in inference_timings.items()},
 	}
 	
 	with open('profiling_results.json', 'w') as f:
